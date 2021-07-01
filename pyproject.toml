@@ -1,8 +1,13 @@
 [tool.poetry]
 name = "clustercheck"
-version = "0.1.1"
+version = "0.1.2"
 description = "check a cluster of services"
 authors = ["erik aronesty <erik@q32.com>"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/AtakamaLLC/clustercheck"
+repository = "https://github.com/AtakamaLLC/clustercheck"
+include = [ "LICENSE", ]
 
 [tool.poetry.dependencies]
 python = "^3.6"
