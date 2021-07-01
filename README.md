@@ -16,7 +16,7 @@ dns_map:
     www.blah.com: kube.aws.longthing.com
     www.bar.com: 12.34.56.7
 
-plugin:
+plugins:
     - lib: myplugin.py
       name: MyCheck
 
