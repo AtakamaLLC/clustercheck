@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "clustercheck"
-version = "0.1.0"
+version = "0.1.1"
 description = "check a cluster of services"
 authors = ["erik aronesty <erik@q32.com>"]
 

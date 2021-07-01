@@ -190,6 +190,7 @@ class Checker:
 
     def load_plugins(self, plugins):
         p: PluginConfig
+        log.debug("loading %s plugins", len(plugins))
         for p in plugins:
             self.load_plugin(p)
         # noinspection PyProtectedMember
@@ -202,11 +203,13 @@ class Checker:
         try:
             # import name
             importlib.import_module(p.lib)
+            log.debug("loaded as module: %s", p.lib)
         except ImportError:
             # or path to a file
             spec = importlib.util.spec_from_file_location("module.name", p.lib)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
+            log.debug("loaded as file: %s", p.lib)
 
 
 def parse_args():
