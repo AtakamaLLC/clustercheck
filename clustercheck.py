@@ -2,6 +2,7 @@ import abc
 import argparse
 import logging
 import re
+import sys
 import time
 from typing import Dict, List, Type
 
@@ -29,12 +30,19 @@ class Plugin(abc.ABC):
     def __init_subclass__(cls: "Type[Plugin]"):
         Plugin._plugins_[cls.name()] = cls()
 
+
 class Report:
     def __init__(self, ok: bool, msg: str, check: "CheckConfig"):
         self.ok = ok
         self.msg = msg
         self.check = check
         self.time = time.time()
+
+    def format(self, fmt):
+        pass_fail = "PASS" if self.ok else "FAIL"
+        return fmt.format(
+            ok=pass_fail, message=self.msg, config=self.check, time=self.time
+        )
 
 
 class CheckConfig:
@@ -73,7 +81,10 @@ class PluginConfig:
 
 
 class Config:
+    DEFAULT_FORMAT = "{ok} [{time}] {message} {config.url}"
+
     def __init__(self, dns_map=None, plugins=None, checks=None):
+        self.output_format = self.DEFAULT_FORMAT
         self.dns_map: Dict[str, str] = dns_map or {}
         self.checks: List[CheckConfig] = [
             CheckConfig.from_dict(ent) for ent in (checks or [])
@@ -98,26 +109,34 @@ class Config:
 
 
 class Checker:
-    def __init__(self, config):
+    def __init__(self, config: Config):
         self.reports: List[Report] = []
         self.config = config
         self.results = []
         self.plugins = {}
 
+    def reset(self):
+        self.results = []
+
     def check(self):
-        self.setup_dns()
-        self.load_plugins()
-        self.check_all()
+        self.setup_dns(self.config.dns_map)
+        self.load_plugins(self.config.plugins)
+        self.check_all(self.config.checks)
         return self.results
 
-    def setup_dns(self):
-        dns_map = {}
-        for src, dest in self.config.dns_map.items():
+    def ok(self):
+        return all(r.ok for r in self.reports)
+
+    @staticmethod
+    def setup_dns(dns_map: Dict[str, str]):
+        dns_map = dns_map.copy()
+
+        for src, dest in dns_map.items():
             dns_map[src.lower().rstrip(".")] = dest
 
         def make_new_func(prv_func):
             def new_func(*args):
-                map = dns_map.get(args[0].rstrip("."))
+                map = dns_map.get(args[0].lower().rstrip("."))
                 if map:
                     return prv_func(*((map,) + args[1:]))
                 else:
@@ -129,9 +148,9 @@ class Checker:
         socket.gethostbyname = make_new_func(socket.gethostbyname)
         socket.gethostbyname_ex = make_new_func(socket.gethostbyname_ex)
 
-    def check_all(self):
+    def check_all(self, checks: List[CheckConfig]):
         g: CheckConfig
-        for g in self.config.checks:
+        for g in checks:
             uri = urlparse(g.url)
             if g.plugin:
                 p: Plugin = self.plugins[g.plugin]
@@ -159,13 +178,21 @@ class Checker:
             else:
                 self.report(False, "invalid scheme", g)
 
-    def report(self, ok, msg, check):
+    def report(self, ok: bool, msg: str, check: CheckConfig):
         self.reports += [Report(bool(ok), msg, check)]
 
-    def load_plugins(self):
+    def print_reports(self, fmt, file, verbose):
+        for r in self.reports:
+            if not verbose and r.ok:
+                continue
+            file.write(r.format(fmt))
+            file.write("\n")
+
+    def load_plugins(self, plugins):
         p: PluginConfig
-        for p in self.config.plugins:
+        for p in plugins:
             self.load_plugin(p)
+        # noinspection PyProtectedMember
         self.plugins = Plugin._plugins_
 
     @staticmethod
@@ -181,10 +208,12 @@ class Checker:
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", help="set debug log level")
-    parser.add_argument("--config", help="read config yml", default="checker.yml")
+    parser.add_argument("--verbose", "-v", help="set verbose", action="store_true")
+    parser.add_argument("--debug", help="set debug mode", action="store_true")
+    parser.add_argument("--config", "-c", help="read config yml", default="checker.yml")
     return parser.parse_args()
 
 
@@ -195,8 +224,9 @@ def main():
         log.setLevel(logging.DEBUG)
     config = Config.from_file(args.config)
     checker = Checker(config)
-    results = checker.check()
-    print(results.format())
+    checker.check()
+    checker.print_reports(config.output_format, sys.stderr, verbose=args.verbose)
+    sys.exit(checker.ok())
 
 
 if __name__ == "__main__":
